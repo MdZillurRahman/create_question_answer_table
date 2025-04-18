@@ -49,7 +49,7 @@ def extract_questions_answers(page):
             for line in block["lines"]:
                 for span in line["spans"]:
                     rgb_color = extract_rgb_from_int(span["color"])  # Convert color
-                    text_content = span['text'].strip()  # Get the text content
+                    text_content = span['text'].strip().replace(".", "")  # Get the text content
                     font_name = span['font'].split(",")[0]  # Get the actual font name excluding bold
                     
                     # Check if it's a question (red-colored text)
@@ -105,17 +105,18 @@ def change_text_color_in_pdf(page, doc):
 
 def generate_html_table(questions, answers, question_fonts, answer_fonts):
     # Generate HTML table string with white background and fonts
-    table = "<table border='1' style='border-collapse: collapse; background-color: white; font-size: 20px;'>"
-    table += "<thead><tr><th style='background-color: black; color: white; padding: 7px;'>Answersheet</th>"
+    img = "<img src='https://i.ibb.co.com/rG75b3BD/image-white-bg.png' style='width:100px; height:100px; object-fit:cover' />"
+    table = "<table border='1' style='border-collapse: collapse; font-size: 20px; max-width: 20px;'>"
+    table += f"<thead><tr><th style='background-color: black; color: white; padding: 7px;'>{img}</th></tr>"
     
     for i, (q, a, q_font, a_font) in enumerate(zip(questions, answers, question_fonts, answer_fonts)):
         # Combine question and answer with their respective fonts
         cell_content = f"<span style='font-family: \"{q_font}\"'>{q}.</span>"
         cell_content += f"<span style='font-family: \"{a_font}\"; margin-left: 3px;'>{a}</span>"
         
-        table += f"<td style='padding: 7px; background-color: white;'>{cell_content}</td>"
+        table += f"<tr><td style='padding: 7px;'>{cell_content}</td></tr>"
     
-    table += "</tr></thead></tbody></table>"
+    table += "</thead></tbody></table>"
     
     return table
 
@@ -138,7 +139,7 @@ def html_to_image(html):
     image.save(image_stream, format="PNG")
     image_stream.seek(0)
 
-    content_width = 550  # Extract actual content width
+    content_width = 350  # Extract actual content width
 
     return image_stream, content_width
 
@@ -173,26 +174,38 @@ def insert_image_into_pdf_footer(doc, image_stream, page, content_width):
 
     # Open the image to get its actual size
     image = Image.open(temp_img_path)
+
+    # Auto-crop the image to remove white space
+    image = image.crop(image.getbbox())  # Removes extra whitespace
     img_width, img_height = image.size
 
     # Scale down the image width while maintaining the aspect ratio
     scale_factor = content_width / img_width
-    new_width = content_width
+    new_width = 200
     new_height = int(img_height * scale_factor)
 
     # Get the page dimensions
+    page_number = page.number
     page_width = page.rect.width
     page_height = page.rect.height
 
     # Define the footer position
     margin_bottom = 50  # Distance from the bottom of the page
-    rect = fitz.Rect(
-        (page_width - new_width) / 0.8,  # Center the image horizontally
-        page_height - new_height - margin_bottom,  # Position it at the footer
-        (page_width + new_width) / 2,
-        page_height - margin_bottom
-    )
+    bottom = page_height - margin_bottom  # Fixed bottom position
+    top = bottom - new_height  # Calculate top position
 
+    # Determine the left and right positions based on even/odd page number
+    if page_number % 2 == 0:
+        # Even page -> Push image to the right
+        left = page_width - new_width  # Align to right
+        right = page_width
+    else:
+        # Odd page -> Push image to the left
+        left = 0
+        right = new_width  # Align to left
+
+    # Define the rectangle for image placement
+    rect = fitz.Rect(left, top, right, bottom)
     # Insert the image into the specified rectangle
     page.insert_image(rect, filename=temp_img_path)
 
