@@ -106,13 +106,13 @@ def change_text_color_in_pdf(page, doc):
 def generate_html_table(questions, answers, question_fonts, answer_fonts):
     # Generate HTML table string with white background and fonts
     img = "<img src='https://i.ibb.co.com/rG75b3BD/image-white-bg.png' style='width:100px; height:100px; object-fit:cover' />"
-    table = "<table border='1' style='border-collapse: collapse; font-size: 20px; max-width: 20px;'>"
-    table += f"<thead><tr><th style='background-color: black; color: white; padding: 7px;'>{img}</th></tr>"
+    table = "<table border='1' style='border-collapse: collapse; font-size: 20px; max-width: 20px; margin: 0; padding: 0; background-color: transparent;'>"
+    table += f"<thead><tr style='padding-bottom: 7px; border: none;'><th>{img}</th></tr>"
     
     for i, (q, a, q_font, a_font) in enumerate(zip(questions, answers, question_fonts, answer_fonts)):
         # Combine question and answer with their respective fonts
         cell_content = f"<span style='font-family: \"{q_font}\"'>{q}.</span>"
-        cell_content += f"<span style='font-family: \"{a_font}\"; margin-left: 3px;'>{a}</span>"
+        cell_content += f"<span style='font-family: \"{a_font}\"; margin-left: 5px;'>{a}.</span>"
         
         table += f"<tr><td style='padding: 7px;'>{cell_content}</td></tr>"
     
@@ -121,97 +121,70 @@ def generate_html_table(questions, answers, question_fonts, answer_fonts):
     return table
 
 def html_to_image(html):
-    """ Converts HTML to an image with white background """
+    """Converts HTML to a tightly cropped image."""
     options = {
         "format": "png",
-        "quality": 1000,
+        "quality": 100,
         "disable-smart-width": "",
+        "transparent": "",
+        "crop-w": "130"  # Force crop to specific width (adjust based on your table)
     }
 
-    # Convert HTML to image with white background
+    # Convert HTML to image
     img_bytes = imgkit.from_string(html, False, options=options)
 
-    # Load image using PIL
+    # Load image and crop aggressively
     image = Image.open(BytesIO(img_bytes)).convert("RGBA")
     
-    # Save image to a stream
+    # Use getbbox() to detect content boundaries and crop whitespace
+    bbox = image.getbbox()
+    if bbox:
+        cropped_image = image.crop(bbox)
+    else:
+        cropped_image = image  # Fallback if cropping fails
+
+    # Save to stream
     image_stream = BytesIO()
-    image.save(image_stream, format="PNG")
+    cropped_image.save(image_stream, format="PNG")
     image_stream.seek(0)
 
-    content_width = 350  # Extract actual content width
-
-    return image_stream, content_width
-
-
-# def insert_image_into_pdf(doc, image_stream, page, content_width):
-#     """ Inserts the image at a proper width while maintaining high resolution """
-
-#     # Save image to a temporary file
-#     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp_img:
-#         temp_img.write(image_stream.getvalue())  
-#         temp_img_path = temp_img.name  
-
-#     # Open image to get actual size
-#     image = Image.open(temp_img_path)
-#     img_width, img_height = image.size  
-
-#     # Scale down width while keeping high resolution
-#     scale_factor = content_width / img_width
-#     new_width = content_width
-#     new_height = int(img_height * scale_factor)  
-
-#     # Insert image into PDF
-#     rect = fitz.Rect(70, 20, 200 + new_width, 1350 + new_height)  
-#     page.insert_image(rect, filename=temp_img_path)  
+    return image_stream, cropped_image.width
 
 def insert_image_into_pdf_footer(doc, image_stream, page, content_width):
-    """Inserts the image into the footer of the PDF page."""
-    # Save image to a temporary file
+    """Inserts the image into the footer with proper scaling."""
     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp_img:
         temp_img.write(image_stream.getvalue())
         temp_img_path = temp_img.name
 
-    # Open the image to get its actual size
     image = Image.open(temp_img_path)
-
-    # Auto-crop the image to remove white space
-    image = image.crop(image.getbbox())  # Removes extra whitespace
     img_width, img_height = image.size
 
-    # Scale down the image width while maintaining the aspect ratio
-    scale_factor = content_width / img_width
-    new_width = 200
+    # Scale image to fit desired width in PDF (e.g., 200 units)
+    desired_width = 43  # Adjust this based on your PDF layout
+    scale_factor = desired_width / img_width
+    new_width = desired_width
     new_height = int(img_height * scale_factor)
 
-    # Get the page dimensions
-    page_number = page.number
+    # Position calculations
     page_width = page.rect.width
     page_height = page.rect.height
+    margin_bottom = 50  # Space from bottom
 
-    # Define the footer position
-    margin_bottom = 50  # Distance from the bottom of the page
-    bottom = page_height - margin_bottom  # Fixed bottom position
-    top = bottom - new_height  # Calculate top position
-
-    # Determine the left and right positions based on even/odd page number
-    if page_number % 2 == 0:
-        # Even page -> Push image to the right
-        left = page_width - new_width  # Align to right
-        right = page_width
+    # Adjust for even/odd pages
+    if page.number % 2 == 0:
+        left = page_width - new_width - 24  # Right-aligned
     else:
-        # Odd page -> Push image to the left
-        left = 0
-        right = new_width  # Align to left
+        left = 20  # Left-aligned
 
-    # Define the rectangle for image placement
-    rect = fitz.Rect(left, top, right, bottom)
-    # Insert the image into the specified rectangle
+    rect = fitz.Rect(
+        left,
+        page_height - margin_bottom - new_height,  # Top
+        left + new_width,  # Right
+        page_height - margin_bottom  # Bottom
+    )
+
     page.insert_image(rect, filename=temp_img_path)
-
-    # Cleanup: Delete the temporary file
     # os.remove(temp_img_path)
-
 
 def process_pdf(input_pdf, output_pdf):
     doc = fitz.open(input_pdf)
@@ -234,7 +207,6 @@ def process_pdf(input_pdf, output_pdf):
     doc.save(output_pdf)
     print(f"Saved modified PDF to: {output_pdf}")
     doc.close()
-
 
 @app.route('/')
 def upload_form():
