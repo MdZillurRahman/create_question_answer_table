@@ -49,7 +49,7 @@ def extract_questions_answers(page):
             for line in block["lines"]:
                 for span in line["spans"]:
                     rgb_color = extract_rgb_from_int(span["color"])  # Convert color
-                    text_content = span['text'].strip().replace(".", "")  # Get the text content
+                    text_content = span['text'].strip().replace(".", "") + "."  # Get the text content
                     font_name = span['font'].split(",")[0]  # Get the actual font name excluding bold
                     
                     # Check if it's a question (red-colored text)
@@ -104,19 +104,44 @@ def change_text_color_in_pdf(page, doc):
                 doc.update_stream(xref, new_stream)
 
 def generate_html_table(questions, answers, question_fonts, answer_fonts):
-    # Generate HTML table string with white background and fonts
-    img = "<img src='https://i.ibb.co.com/rG75b3BD/image-white-bg.png' style='width:100px; height:100px; object-fit:cover' />"
-    table = "<table border='1' style='border-collapse: collapse; font-size: 20px; max-width: 20px; margin: 0; padding: 0; background-color: transparent;'>"
-    table += f"<thead><tr style='padding-bottom: 7px; border: none;'><th>{img}</th></tr>"
+    img = """
+        <img src='https://i.ibb.co.com/G41VCHbr/Answer-box-Design-2.png' 
+            style='
+                width: 101px; 
+                height: auto;
+                display: block; 
+                border: none !important;
+                outline: none !important;
+                background: transparent !important;
+                image-rendering: crisp-edges;
+            ' />
+        """
+    
+    # Correct HTML structure with separate thead/tbody and no extra periods
+    table = """
+    <table border='0' style='
+        border-collapse: collapse !important; 
+        font-size: 30px; 
+        margin: 0 !important; 
+        padding: 0 !important;
+        background-color: transparent;
+    '>
+    <thead style='border-right: 1px solid black; padding: 0 !important; margin: 0 !important;'>
+        <tr style='border: none !important; padding: 0 !important; margin: 0 !important;'>
+            <th style='border: none !important; padding: 0 !important; margin: 0 !important;'>{img}</th>
+        </tr>
+    </thead>
+    <tbody>
+    """.format(img=img)
     
     for i, (q, a, q_font, a_font) in enumerate(zip(questions, answers, question_fonts, answer_fonts)):
-        # Combine question and answer with their respective fonts
-        cell_content = f"<span style='font-family: \"{q_font}\"'>{q}.</span>"
-        cell_content += f"<span style='font-family: \"{a_font}\"; margin-left: 5px;'>{a}.</span>"
+        # Remove "." after {q} and {a} unless explicitly needed
+        cell_content = f"<span style='font-family: \"{q_font}\"'>{q}</span>"  # No trailing .
+        cell_content += f"<span style='font-family: \"{a_font}\"; margin-left: 5px;'>{a}</span>"  # No trailing .
         
-        table += f"<tr><td style='padding: 7px;'>{cell_content}</td></tr>"
+        table += f"<tr><td style='padding: 7px; border: 1px solid black;'>{cell_content}</td></tr>"
     
-    table += "</thead></tbody></table>"
+    table += "</tbody></table>"
     
     return table
 
@@ -124,7 +149,7 @@ def html_to_image(html):
     """Converts HTML to a tightly cropped image."""
     options = {
         "format": "png",
-        "quality": 100,
+        "quality": 500,
         "disable-smart-width": "",
         "transparent": "",
         "crop-w": "130"  # Force crop to specific width (adjust based on your table)
@@ -174,7 +199,7 @@ def insert_image_into_pdf_footer(doc, image_stream, page, content_width):
     if page.number % 2 == 0:
         left = page_width - new_width - 24  # Right-aligned
     else:
-        left = 20  # Left-aligned
+        left = 21.5  # Left-aligned
 
     rect = fitz.Rect(
         left,
@@ -197,7 +222,6 @@ def process_pdf(input_pdf, output_pdf):
         
         if questions and answers:
             html_table = generate_html_table(questions, answers, question_fonts, answer_fonts)
-            print(html_table)
 
             # Get the image and its actual content width
             image_stream, content_width = html_to_image(html_table)
